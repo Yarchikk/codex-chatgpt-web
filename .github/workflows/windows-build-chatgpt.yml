@@ -1,0 +1,53 @@
+name: Build Windows latest
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/windows-build-chatgpt.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun install --frozen-lockfile
+        working-directory: launcher
+
+      - name: Prepare Windows runtime
+        shell: pwsh
+        run: ./scripts/prepare-windows-baseline-bun.ps1 -Version 1.4.0 -GitHubEnv $env:GITHUB_ENV
+
+      - name: Verify
+        run: bun run verify
+
+      - name: Package
+        run: bun run app:package
+
+      - name: Smoke test
+        run: bun run app:smoke
+
+      - name: Archive runtime
+        shell: pwsh
+        run: Compress-Archive -Path launcher/build/runtime/* -DestinationPath codex-chatgpt-web-windows-amd64-main.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-web-gpt-windows-main
+          path: |
+            codex-chatgpt-web-windows-amd64-main.zip
+            launcher/artifacts/*.exe
+            launcher/artifacts/*.zip
+          if-no-files-found: error
