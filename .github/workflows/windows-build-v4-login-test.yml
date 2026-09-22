@@ -34,8 +34,15 @@ jobs:
         shell: pwsh
         run: ./scripts/prepare-windows-baseline-bun.ps1 -Version 1.4.0 -GitHubEnv $env:GITHUB_ENV
 
-      - name: Verify
-        run: bun run verify
+      - name: Typecheck core
+        run: bun run typecheck
+
+      - name: Typecheck launcher
+        run: bun run launcher:typecheck
+
+      # Do not run `bun audit` for this historical v4.0.0 reproduction build.
+      # New advisories published after v4.0.0 now make the old lockfile fail audit,
+      # even though that is unrelated to whether the original Windows login code builds.
 
       - name: Package
         run: bun run app:package
