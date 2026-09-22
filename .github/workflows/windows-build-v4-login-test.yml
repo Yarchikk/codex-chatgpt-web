@@ -1,0 +1,57 @@
+name: Build Windows v4.0.0 Login Test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/windows-build-v4-login-test.yml
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows-v4:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout upstream v4.0.0
+        uses: actions/checkout@v6
+        with:
+          repository: miuuyy/codex-chatgpt-web
+          ref: v4.0.0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.0
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun install --frozen-lockfile
+        working-directory: launcher
+
+      - name: Prepare Windows runtime
+        shell: pwsh
+        run: ./scripts/prepare-windows-baseline-bun.ps1 -Version 1.4.0 -GitHubEnv $env:GITHUB_ENV
+
+      - name: Verify
+        run: bun run verify
+
+      - name: Package
+        run: bun run app:package
+
+      - name: Smoke test
+        run: bun run app:smoke
+
+      - name: Archive runtime
+        shell: pwsh
+        run: Compress-Archive -Path launcher/build/runtime/* -DestinationPath codex-chatgpt-web-v4.0.0-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-web-gpt-WINDOWS-v4.0.0-KNOWN-GOOD-LOGIN
+          path: |
+            codex-chatgpt-web-v4.0.0-windows.zip
+            launcher/artifacts/*.exe
+          if-no-files-found: error
+          retention-days: 7
