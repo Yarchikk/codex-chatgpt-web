@@ -48,72 +48,67 @@ jobs:
             )
           }
 
-          # Allow browser-session capture on Windows.
           Replace-Exact `
             "src/browser-login.ts" `
             'if (process.platform !== "darwin") {' `
             'if (process.platform !== "darwin" && process.platform !== "win32") {'
 
-          # Allow launcher-control login on Windows.
           Replace-Exact `
             "src/cli.ts" `
             'if (process.platform !== "darwin") throw new Error("Passkey sign-in is currently supported only on macOS");' `
             'if (process.platform !== "darwin" && process.platform !== "win32") throw new Error("System-browser sign-in is currently supported only on macOS and Windows");'
 
-          # Allow Launcher to start browser login on Windows.
           Replace-Exact `
             "launcher/electron/runtime.cjs" `
             'if (this.platform !== "darwin") throw new Error("Passkey sign-in is currently supported only on macOS");' `
             'if (this.platform !== "darwin" && this.platform !== "win32") throw new Error("System-browser sign-in is currently supported only on macOS and Windows");'
 
-          # Prefer Yandex Browser on Windows; fall back to Chrome or Edge.
           $oldBrowserResolver = @'
-    const setupConfig = this.supervisor.readSetupConfig
-      ? this.supervisor.readSetupConfig()
-      : this.supervisor.readConfig();
-    const candidate = setupConfig?.chromeExecutablePath
-      || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-    if (!usableExecutable(candidate, this.platform)) {
-      throw new Error(`Google Chrome is unavailable at ${candidate}`);
-    }
-    return candidate;
-'@
+          const setupConfig = this.supervisor.readSetupConfig
+            ? this.supervisor.readSetupConfig()
+            : this.supervisor.readConfig();
+          const candidate = setupConfig?.chromeExecutablePath
+            || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+          if (!usableExecutable(candidate, this.platform)) {
+            throw new Error(`Google Chrome is unavailable at ${candidate}`);
+          }
+          return candidate;
+          '@
 
           $newBrowserResolver = @'
-    const setupConfig = this.supervisor.readSetupConfig
-      ? this.supervisor.readSetupConfig()
-      : this.supervisor.readConfig();
-    const configured = setupConfig?.chromeExecutablePath;
-    const windowsCandidates = this.platform === "win32"
-      ? [
-          ...(process.env.LOCALAPPDATA
-            ? [path.join(process.env.LOCALAPPDATA, "Yandex", "YandexBrowser", "Application", "browser.exe")]
-            : []),
-          ...(process.env.PROGRAMFILES
-            ? [path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe")]
-            : []),
-          ...(process.env["PROGRAMFILES(X86)"]
-            ? [path.join(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe")]
-            : []),
-          ...(process.env.PROGRAMFILES
-            ? [path.join(process.env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe")]
-            : []),
-        ]
-      : [];
-    const candidate = configured && usableExecutable(configured, this.platform)
-      ? configured
-      : windowsCandidates.find(value => usableExecutable(value, this.platform))
-        || configured
-        || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-    if (!usableExecutable(candidate, this.platform)) {
-      throw new Error(`System browser is unavailable at ${candidate}`);
-    }
-    return candidate;
-'@
+          const setupConfig = this.supervisor.readSetupConfig
+            ? this.supervisor.readSetupConfig()
+            : this.supervisor.readConfig();
+          const configured = setupConfig?.chromeExecutablePath;
+          const windowsCandidates = this.platform === "win32"
+            ? [
+                ...(process.env.LOCALAPPDATA
+                  ? [path.join(process.env.LOCALAPPDATA, "Yandex", "YandexBrowser", "Application", "browser.exe")]
+                  : []),
+                ...(process.env.PROGRAMFILES
+                  ? [path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe")]
+                  : []),
+                ...(process.env["PROGRAMFILES(X86)"]
+                  ? [path.join(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe")]
+                  : []),
+                ...(process.env.PROGRAMFILES
+                  ? [path.join(process.env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe")]
+                  : []),
+              ]
+            : [];
+          const candidate = configured && usableExecutable(configured, this.platform)
+            ? configured
+            : windowsCandidates.find(value => usableExecutable(value, this.platform))
+              || configured
+              || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
+          if (!usableExecutable(candidate, this.platform)) {
+            throw new Error(`System browser is unavailable at ${candidate}`);
+          }
+          return candidate;
+          '@
 
           Replace-Exact "launcher/electron/runtime.cjs" $oldBrowserResolver $newBrowserResolver
 
-          # Show system-browser login on Windows.
           Replace-Exact `
             "launcher/src/App.tsx" `
             '    && platform === "darwin"' `
