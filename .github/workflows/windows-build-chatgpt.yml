@@ -58,63 +58,61 @@ jobs:
             'if (process.platform !== "darwin") throw new Error("Passkey sign-in is currently supported only on macOS");' `
             'if (process.platform !== "darwin" && process.platform !== "win32") throw new Error("System-browser sign-in is currently supported only on macOS and Windows");'
 
-          Replace-Exact `
-            "launcher/electron/runtime.cjs" `
-            'if (this.platform !== "darwin") throw new Error("Passkey sign-in is currently supported only on macOS");' `
-            'if (this.platform !== "darwin" && this.platform !== "win32") throw new Error("System-browser sign-in is currently supported only on macOS and Windows");'
-
-          $oldBrowserResolver = @'
-          const setupConfig = this.supervisor.readSetupConfig
-            ? this.supervisor.readSetupConfig()
-            : this.supervisor.readConfig();
-          const candidate = setupConfig?.chromeExecutablePath
-            || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-          if (!usableExecutable(candidate, this.platform)) {
-            throw new Error(`Google Chrome is unavailable at ${candidate}`);
+          $runtimePath = "launcher/electron/runtime.cjs"
+          $runtime = Get-Content -Path $runtimePath -Raw
+          $pattern = '(?ms)^  passkeyChromeExecutable\(\) \{.*?^  continuePasskeyLogin\(\) \{'
+          $matches = [regex]::Matches($runtime, $pattern)
+          if ($matches.Count -ne 1) {
+            throw "Expected exactly one passkeyChromeExecutable block, found $($matches.Count)"
           }
-          return candidate;
-          '@
 
-          $newBrowserResolver = @'
-          const setupConfig = this.supervisor.readSetupConfig
-            ? this.supervisor.readSetupConfig()
-            : this.supervisor.readConfig();
-          const configured = setupConfig?.chromeExecutablePath;
-          const windowsCandidates = this.platform === "win32"
-            ? [
-                ...(process.env.LOCALAPPDATA
-                  ? [path.join(process.env.LOCALAPPDATA, "Yandex", "YandexBrowser", "Application", "browser.exe")]
-                  : []),
-                ...(process.env.PROGRAMFILES
-                  ? [path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe")]
-                  : []),
-                ...(process.env["PROGRAMFILES(X86)"]
-                  ? [path.join(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe")]
-                  : []),
-                ...(process.env.PROGRAMFILES
-                  ? [path.join(process.env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe")]
-                  : []),
-              ]
-            : [];
-          const candidate = configured && usableExecutable(configured, this.platform)
-            ? configured
-            : windowsCandidates.find(value => usableExecutable(value, this.platform))
-              || configured
-              || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
-          if (!usableExecutable(candidate, this.platform)) {
-            throw new Error(`System browser is unavailable at ${candidate}`);
-          }
-          return candidate;
-          '@
+          $replacement = @'
+  passkeyChromeExecutable() {
+    if (this.platform !== "darwin" && this.platform !== "win32") {
+      throw new Error("System-browser sign-in is currently supported only on macOS and Windows");
+    }
+    const setupConfig = this.supervisor.readSetupConfig
+      ? this.supervisor.readSetupConfig()
+      : this.supervisor.readConfig();
+    const configured = setupConfig?.chromeExecutablePath;
+    const yandex = this.platform === "win32" && process.env.LOCALAPPDATA
+      ? path.join(process.env.LOCALAPPDATA, "Yandex", "YandexBrowser", "Application", "browser.exe")
+      : null;
+    const chrome = this.platform === "win32" && process.env.PROGRAMFILES
+      ? path.join(process.env.PROGRAMFILES, "Google", "Chrome", "Application", "chrome.exe")
+      : null;
+    const edgeX86 = this.platform === "win32" && process.env["PROGRAMFILES(X86)"]
+      ? path.join(process.env["PROGRAMFILES(X86)"], "Microsoft", "Edge", "Application", "msedge.exe")
+      : null;
+    const edge64 = this.platform === "win32" && process.env.PROGRAMFILES
+      ? path.join(process.env.PROGRAMFILES, "Microsoft", "Edge", "Application", "msedge.exe")
+      : null;
+    const candidates = this.platform === "win32"
+      ? [yandex, configured, chrome, edgeX86, edge64]
+      : [configured, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"];
+    const candidate = candidates.find(value => usableExecutable(value, this.platform));
+    if (!candidate) {
+      throw new Error("No supported system browser was found");
+    }
+    return candidate;
+  }
 
-          Replace-Exact "launcher/electron/runtime.cjs" $oldBrowserResolver $newBrowserResolver
+  continuePasskeyLogin() {
+'@
+
+          $runtime = [regex]::Replace($runtime, $pattern, $replacement, 1)
+          [System.IO.File]::WriteAllText(
+            (Resolve-Path $runtimePath).Path,
+            $runtime,
+            [System.Text.UTF8Encoding]::new($false)
+          )
 
           Replace-Exact `
             "launcher/src/App.tsx" `
             '    && platform === "darwin"' `
             '    && (platform === "darwin" || platform === "win32")'
 
-          Write-Host "Windows browser login patch applied (Yandex -> Chrome -> Edge)."
+          Write-Host "Windows browser login patch applied (Yandex -> configured -> Chrome -> Edge)."
 
       - name: Prepare Windows runtime
         shell: pwsh
