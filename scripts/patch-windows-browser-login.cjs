@@ -24,9 +24,17 @@ replaceExact(
 {
   const file = "launcher/electron/runtime.cjs";
   let text = fs.readFileSync(file, "utf8");
-  const pattern = /  passkeyChromeExecutable\(\) \{[\s\S]*?\n  \}\n\n  continuePasskeyLogin\(\) \{/;
-  const matches = text.match(pattern);
-  if (!matches) throw new Error("passkeyChromeExecutable block was not found");
+
+  // Git checkout on Windows may convert LF to CRLF, so normalize only for matching.
+  const normalized = text.replace(/\r\n/g, "\n");
+  const startMarker = "  passkeyChromeExecutable() {";
+  const endMarker = "\n\n  continuePasskeyLogin() {";
+  const start = normalized.indexOf(startMarker);
+  const end = normalized.indexOf(endMarker, start);
+
+  if (start < 0 || end < 0) {
+    throw new Error("passkeyChromeExecutable block was not found");
+  }
 
   const replacement = `  passkeyChromeExecutable() {
     if (this.platform !== "darwin" && this.platform !== "win32") {
@@ -54,11 +62,14 @@ replaceExact(
     const candidate = candidates.find(value => usableExecutable(value, this.platform));
     if (!candidate) throw new Error("No supported system browser was found");
     return candidate;
-  }
+  }`;
 
-  continuePasskeyLogin() {`;
+  const patchedNormalized = normalized.slice(0, start)
+    + replacement
+    + normalized.slice(end);
 
-  text = text.replace(pattern, replacement);
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  text = eol === "\r\n" ? patchedNormalized.replace(/\n/g, "\r\n") : patchedNormalized;
   fs.writeFileSync(file, text, "utf8");
 }
 
